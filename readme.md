@@ -47,6 +47,17 @@ the relationship between min valid length and pred length
 
 ### Some Note
 
+1. The reasons why the min_valid_percent is 100 maybe
+     - the full reasoning process is too long so the result maybe None (because it more than the defined max token)  (mainly)
+     - the answer after the full reasoning process is wrong, but the answer by judge LLM is correct (a few)
+     - I simply use == or in to check the answer, it useful in almost math problem, but in some case the form of output may different, maybe we can use a simple llm to judge whether the output is same, but in this case I jump this process.
+     - APIError. Because I call the API in parallel, and in very rare cases, it gets blocked and causes issues.
+ 
+ 2. The prediction of Length is too conservative and wierd, I may adjust the prompt and calibrate more
+
+
+### Future Work
+
 1. We need to verify whether the quantile is accurate on the test dataset. This requires conducting some comparative experiments.
 
     One idea is to use the text continuation mode, where we input:
