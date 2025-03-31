@@ -1,0 +1,10 @@
+{
+    "api_key": "sk-jzamerxaovvufrqtwcwoiudvezbxczqlipozheuwqazveznw",     
+    "base_url": "https://api.siliconflow.cn/",
+    "model": "Qwen/Qwen2.5-14B-Instruct",
+    "LLM_check": false,
+    "check_api": "sk-jzamerxaovvufrqtwcwoiudvezbxczqlipozheuwqazveznw",
+    "check_url": "https://api.siliconflow.cn/",
+    "pred_model": "Qwen/Qwen2.5-14B-Instruct"
+    
+}
