@@ -15,7 +15,7 @@ To simplify the process, I'm currently search by 1%, 2%, ... 100% instead of tok
 
 here the min_valid_length is the minist k that using the firsk k reasonging process can llm output the same answer as the answer after full reasoning.
 
-the min_valid_percent is  $\frac{min\_ valid\_ length}{full\_reasoning\_length}\cdot 100$
+the min_valid_percent is  $\frac{min\ valid \ length}{full \  reasoning \  length}\cdot 100$
 
 
 |       index       | min_valid_length | min_valid_percent |
@@ -47,14 +47,15 @@ the relationship between min valid length and pred length
 
 ### Some Note
 
-1. The reasons why the min_valid_percent is 100 maybe
-    - the full reasoning process is too long so the result maybe None (because it more than the defined max token)  (mainly)
-    - the answer after the full reasoning process is wrong, but the answer by judge LLM is correct (a few)
-    - I simply use == or in to check the answer, it useful in almost math problem, but in some case the form of output may different, maybe we can use a simple llm to judge whether the output is same, but in this case I jump this process.
-    - APIError. Because I 
+1. We need to verify whether the quantile is accurate on the test dataset. This requires conducting some comparative experiments.
 
-2. The prediction of Length is too conservative and wierd, I may adjust the prompt and calibrate more
+    One idea is to use the text continuation mode, where we input:
 
+     {problem} <think>: {truncated reasoning process} <think>
 
-### Future Work
+    to prompt the model to continue generating the reasoning. We can then compare this output to the result generated through full reasoning. However, the API I am currently using does not seem to support this type of service, so I may explore other options :(.
+
+2. It is challenging to directly query an LLM for its predicted reasoning length. However, there are some potential approaches we could try:
+   - Use few-shot prompting, e.g., by providing a few reasoning examples.
+   - I came across a paper that predicts the generation length of LLMs using user input length, application-level semantics, and user-level semantics (https://arxiv.org/pdf/2406.04785). I may try to adopt their approach, which involves training a Random Forest Regressor.
 
