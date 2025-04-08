@@ -69,7 +69,14 @@ Two ways can provide kind of correctness but not precise.
 However, after reviewing some examples, I think it’s easier for the LLM to judge whether a question is easy. If we can provide some examples of reasoning lengths, its predictions for both difficulty level and length would be more precise relatively. But when the problem is difficult (the dataset includes some Olympic problems, like algebra and graph theory), neither humans (myself) nor the LLM can predict the reasoning length and difficulty level accurately, and some long enumeration may occur in the reasoning process. Most of the time, it may predict a shorter reasoning length than the true one from DeepSeek.
 
 
-A thing that I think we can do is that we can use the conditional conformal predction, the class is determined by LLM(? or other ways), and the problem's type(math? code? or commen sense). Then, we use 
+A thing that I think we can do is to use conditional conformal prediction. The class is determined by the LLM (or other methods), and the problem type (math, code, or common sense). Then, we can find a threshold (quantile) to ensure the correctness of new data. However, I think the nonconformity score defined as:
+$\text{nonconformity score} = \frac{\min (\text{valid length})}{\text{predicted length}}$
+is for the similar purpose? We can try some experiments.
+
+
+Currently, the main cost comes from API calls. I can deploy models with 2B or 1.5B parameters, but I don't have the resources to use larger models.
+
+
 
 ### Some Note
 
@@ -79,7 +86,6 @@ A thing that I think we can do is that we can use the conditional conformal pred
      - I simply use == or in to check the answer, it useful in almost math problem, but in some case the form of output may different, maybe we can use a simple llm to judge whether the output is same, but in this case I jump this process.
      - APIError. Because I call the API in parallel, and in very rare cases, it gets blocked and causes issues.
  
- 2. The prediction of Length is too conservative and wierd, I may adjust the prompt and calibrate more
 
 
 ### Future Work
