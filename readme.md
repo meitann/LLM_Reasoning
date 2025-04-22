@@ -86,7 +86,7 @@ Currently, the main cost comes from API calls. I can deploy models with 2B or 1.
      - I simply use == or in to check the answer, it useful in almost math problem, but in some case the form of output may different, maybe we can use a simple llm to judge whether the output is same, but in this case I jump this process.
      - APIError. Because I call the API in parallel, and in very rare cases, it gets blocked and causes issues.
  
-
+2. Another gap is that, in the calibration step, we use a cheaper LLM to judge whether the reasoning step can generate the final answer, but in the real case we just cut up to the threshold and let the LLM continue generate. So maybe the judge answer is include the judge LLM's information, but, if the ability of judge LLM is less than the real LLM, it donot hurt the accuracy. 
 
 ### Future Work
 
@@ -102,3 +102,4 @@ Currently, the main cost comes from API calls. I can deploy models with 2B or 1.
    - Use few-shot prompting, e.g., by providing a few reasoning examples.
    - I came across a paper that predicts the generation length of LLMs using user input length, application-level semantics, and user-level semantics (https://arxiv.org/pdf/2406.04785). I may try to adopt their approach, which involves training a Random Forest Regressor.
 
+3. I need to read more papers...

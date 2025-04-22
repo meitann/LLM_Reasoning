@@ -3,6 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 import concurrent
 import re
+import asyncio, itertools, math
+from typing import Tuple
 from typing import Dict, List, Optional
 from openai import OpenAI, APIConnectionError, APIError
 from tools import Prompt
@@ -12,13 +14,15 @@ from pathlib import Path
 from threading import Lock
 from tools.text import extract_box_content,extract_box_number
 import traceback
+
 class DataEntry:
-    def __init__(self, entry_id: str, problem: str, full_reasoning: str, result: str):
+    def __init__(self, entry_id: str, problem: str, full_reasoning: str,result: str):
         self.id = entry_id
         self.problem = problem
         self.full_reasoning = full_reasoning  
         self.result = result  
-        self.pred_length = None
+        self.first_wrong = None
+        # self.pred_length = None
         self.min_valid_length: Optional[int] = None  
         self.min_valid_percent: Optional[int] = None  
 
@@ -65,40 +69,7 @@ class ReasoningOptimizer:
                         result=data['result']
                     )
                 )
-
-    def query_pred_length(self,problem:str) -> str:
-        max_retries = 2
-        prompt =  f"""Here is a problem
-You need to make a brief assessment of the difficulty of the problem, then estimate how many tokens a reasonably efficient reasoning model would need to complete the reasoning process.
-Finally, output an integer within \\boxed{{}}, representing the expected reasoning length for the reasoning model.
------------------------------------
-Here is the target problem:
-Problem: {problem}
-"""
-
-        for _ in range(max_retries):
-            try:
-                response = self.pred_client.chat.completions.create(
-                    model=self.api_config['pred_model'] ,
-                    messages=[{"role": "system", "content":"You are helpful assistant, now you need to complete user's task."},{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    timeout=35.0
-                )
-                content = response.choices[0].message.content
-                return extract_box_number(content)
-            
-            except APIConnectionError as e:
-                print('APIConnectionError')
-                continue
-            except APIError as e:
-                if e.status_code == 429:  # speed constraint
-                    time.sleep(1) 
-                    print("APIError")
-                    continue
-                break 
-            except (KeyError, AttributeError):
-                break 
-        return ""
+    
     def query_api(self, problem: str, partial_reasoning: str) -> str:
         max_retries = 3
         prompt =  f"""Here is a problem and a portion of the reasoning process.
@@ -125,13 +96,18 @@ Reasoning segment: {partial_reasoning}
                 continue
             except APIError as e:
                 if e.status_code == 429:  # speed constraint
-                    time.sleep(1) 
+                    time.sleep(2 ** _) 
                     print("APIError")
                     continue
                 break 
             except (KeyError, AttributeError):
                 break 
         return ""
+    
+
+    async def async_query_api(self, problem: str, partial_reasoning: str) -> str:
+        return await asyncio.to_thread(self.query_api, problem, partial_reasoning)
+
 
     def split_reasoning(self, full_reasoning: str) -> Dict[int, int]:
         total_len = len(full_reasoning)
@@ -144,7 +120,8 @@ Reasoning segment: {partial_reasoning}
         if len(gen_match)==0 or len(target_match)==0:
             return False
         
-
+        if "None" in gen_match:
+            return False
         gen_val = self._normalize_answer(gen_match[-1])
         target_val = self._normalize_answer(target_match[-1])
         if gen_val == target_val or (gen_val in target_val) or (target_val in gen_val):
@@ -163,17 +140,16 @@ Reasoning segment: {partial_reasoning}
         Answer 1: {generated}
         Answer 2: {target}
         Respond with only "yes" or "no":"""
-        response = self.check_client.completions.create(
+        response = self.check_client.chat.completions.create(
                     model=self.api_config['model'] ,
-                    messages=[
-                        {"role": "system", "content": Prompt.DEEPSEEK_R1_SYSTEM_PROMPT},
-                        {"role": "user", "content": validation_prompt}],
+                    messages=[{"role": "user", "content": validation_prompt}],
                     temperature=0.0,
-                    timeout=10.0
+                    timeout=20.0
                 )
-        return "yes" in response.lower()
+        result = response.choices[0].message.content.strip().lower()
+        return "yes" in result
     
-    def process_single_entry(self, entry: DataEntry):
+    def process_single_entry_old(self, entry: DataEntry):
         chunks = self.split_reasoning(entry.full_reasoning)
         
         low, high = 1, 100
@@ -190,13 +166,36 @@ Reasoning segment: {partial_reasoning}
         
         entry.min_valid_percent = best_percent
         entry.min_valid_length = chunks[best_percent]
-        entry.pred_length = self.query_pred_length(entry.problem)
+        # entry.pred_length = self.query_pred_length(entry.problem)
         self._save_single_entry(entry)
+    
+    
+    def process_single_entry(self, entry: DataEntry):
+        chunks = self.split_reasoning(entry.full_reasoning)
 
+        min_valid_percent = 1
+        for percent in range(100, 0, -1):
+            generated = self.query_api(entry.problem, entry.full_reasoning[:chunks[percent]])
+            if not self.is_result_valid(generated, entry.result):
+                min_valid_percent = percent + 1  
+                break
 
+        if min_valid_percent > 100:
+            min_valid_percent = 101
+            min_valid_length = len(entry.full_reasoning)
+        else:
+            min_valid_length = chunks[min_valid_percent]
+
+        entry.first_wrong=generated
+        entry.min_valid_percent = min_valid_percent
+        entry.min_valid_length = min_valid_length
+        # entry.pred_length = self.query_pred_length(entry.problem)
+        self._save_single_entry(entry)
+    
+        # more efficient code?
 
     def run_optimization(self):
-        max_workers = min(10, len(self.entries)) 
+        max_workers = min(6, len(self.entries)) 
         rate_limit_delay = 0.1
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -254,8 +253,8 @@ Reasoning segment: {partial_reasoning}
             entry_data = {
                 "entry_id": entry.id,
                 "problem": entry.problem,
-                "pred_length": entry.pred_length,
                 "original_reasoning_length": len(entry.full_reasoning),
+                "first_wrong": entry.first_wrong,
                 "min_valid_percent": entry.min_valid_percent,
                 "min_valid_length": entry.min_valid_length,
                 "target_result": entry.result
@@ -270,3 +269,37 @@ Reasoning segment: {partial_reasoning}
                 except IOError as e:
                     self._log_error(e)
                     raise
+
+    #     def query_pred_length(self,problem:str) -> str:
+    #         max_retries = 2
+    #         prompt =  f"""Here is a problem
+    # You need to make a brief assessment of the difficulty of the problem, then estimate how many tokens a reasonably efficient reasoning model would need to complete the reasoning process.
+    # Finally, output an integer within \\boxed{{}}, representing the expected reasoning length for the reasoning model.
+    # -----------------------------------
+    # Here is the target problem:
+    # Problem: {problem}
+    # """
+
+    #         for _ in range(max_retries):
+    #             try:
+    #                 response = self.pred_client.chat.completions.create(
+    #                     model=self.api_config['pred_model'] ,
+    #                     messages=[{"role": "system", "content":"You are helpful assistant, now you need to complete user's task."},{"role": "user", "content": prompt}],
+    #                     temperature=0.0,
+    #                     timeout=35.0
+    #                 )
+    #                 content = response.choices[0].message.content
+    #                 return extract_box_number(content)
+                
+    #             except APIConnectionError as e:
+    #                 print('APIConnectionError')
+    #                 continue
+    #             except APIError as e:
+    #                 if e.status_code == 429:  # speed constraint
+    #                     time.sleep(1) 
+    #                     print("APIError")
+    #                     continue
+    #                 break 
+    #             except (KeyError, AttributeError):
+    #                 break 
+    #         return ""
