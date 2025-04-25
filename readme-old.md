@@ -11,77 +11,41 @@ Experiment Setting
 
 
 
-To simplify the process, I'm currently searching by 1%, 2%, ... up to 100% instead of token-by-token.
+To simplify the process, I'm currently search by 1%, 2%, ... 100% instead of token by token.(however,the code has been advanced to use binary search, so we can search token by token and the complexity would not increas significantly)
 
-Here, the `min_valid_length` is the minimum value of $k$ such that for all $k' \geq k$, the first $k'$ tokens can output the same answer as the answer after full reasoning.
+here the min_valid_length is the minist $k$ that for all $k'\geq k$ the first $k'$ can output the same answer as the answer after full reasoning.
 
-I am using MATH-500 as the calibration set, which contains nearly 300 data points.
-
-### Algorithm 0 & 1
-- **Algorithm 0** uses a unique threshold for all problems.
-- **Algorithm 1** uses deepseek-chat to divide the problems into 5 levels based on their difficulty. For each difficulty level, a different threshold is set.
-
-The results in the calibration set are as follows:
-![Calibration Results](md_pics\diff_level_calibration.png)
-- The red line represents the threshold from Algorithm 0.
-- The different gray shades represent various thresholds for different difficulty levels.
-
-Next, let's examine the relationship between the original length and the threshold:
-![](md_pics\diff_level_calibration_original.png)
-
-We compute the reduction ratio as:
-$$
-\text{Reduction Ratio} = \frac{\sum \max(\text{original\_length} - \text{threshold}, 0)}{\sum \text{original\_length}}
-$$
-
-| Level 1 | Level 2 | Level 3 | Level 4 | Level 5 |
-|---------|---------|---------|---------|---------|
-| 79.15%  | 58.60%  | 43.60%  | 50.89%  | 30.13%  |
-
-- Note that this method helps save more resources for easier problems.
-- The reduction ratio can serve as a flag for choosing the optimal nonconformity score.
+the min_valid_percent is  $\frac{min\ valid \ length}{full \  reasoning \  length}\cdot 100$
 
 
-
-#### Test
-
-We tested on the same dataset (MATH-500), and the accuracy was maintained:
-![](md_pics\diff_level_test.png)
-
-However, when testing on a different, more difficult dataset (AIME 2024), the results are as follows:
-- Using Algorithm-0, we found that only 12 out of 30 (40\%) of the cut data can output the same result as the full reasoning result.
-- Using Algorithm-1, for Level 4, the ratio is 9 out of 14 (64\%). For Level 5, the ratio is 7 out of 15 (46\%).
-- **Note**: This dataset is not perfect. In the 30 data points, 10 data entries had an invalid final result (""). In these cases, the judge LLM generally considers that the output cannot match the full reasoning.
-
-### Algorithm 2
-
-Here, we use the $\frac{min\_valid\_length}{pred\_length}$ as the nonconformity score, where $pred\_length$ is the prediction from deepseek. We found that the threshold is 2.13, and the relationship between the prediction and real values is shown below:
-![](md_pics\pred_length.png)
-
-- The log-axis seems to provide a slightly better fit, but the difference between the predicted and actual values remains noticeable.
-- Using this nonconformity score in the calibration data, we get the following reduction ratio:
-$$
-\text{Reduction Ratio} = \frac{\sum \max(\text{original\_length} - \text{threshold}\cdot \text{pred\_length}, 0)}{\sum \text{original\_length}} = 0.27
-$$
-    the reduction ratio is smaller than the algorithm-1
-### Future Work
-
-Dividing data into different difficulty levels is a simple and useful method. Using prediction length serves a similar purpose, but the performance of the predictions is not very good.
-
-1. Use better signals to find the optimal nonconformity score.
-2. When a calibration threshold is found for one dataset, we may encounter a distribution shift when applying it to a new dataset. Solving this problem is an important question.
-3. Which dataset should we use for calibration?
-4. some more useful-idea?
+|       index       | min_valid_length | min_valid_percent |
+|------------------|------------------|-------------------|
+| mean             | 3028.476510      | 43.550336         |
+| std              | 6404.572198      | 35.975486         |
+| min              | 4.000000         | 1.000000          |
+| 25%              | 106.000000       | 13.000000         |
+| 50%              | 603.000000       | 35.000000         |
+| 75%              | 1638.000000      | 79.000000         |
+| max              | 31147.000000     | 100.000000        |
 
 
-
+the relationship between min valid length and min valid percent
+![relationship between min valid length and min valid percent](md_pics/minlength-minpercent.png)
 
 <!-- the relationship between min valid length and pred length
 ![relationship between min valid length and pred length](minlength-predlength.png) -->
 
+- the quantile
 
----
------old note about how to predict the reasoning length----
+    | $\alpha$ | $\hat{\tau}$ |
+    |----------|--------------|
+    | 0.1      | 12098.033557047002 |
+    | 0.2      | 2433.9463087248396 |
+    | 0.3      | 1360.5906040268455 |
+
+The range of the reasoning length is too large, and we can see that the longer the reasoning length is, the larger the minimum percentage becomes. If we only use $\hat \tau$ to cut the reasoning process, we cannot guarantee the accuracy for difficult problems.
+### About the prediction length
+I tried some methods to predict the reasoning length of an LLM.
 
 I used Open-Thought's math dataset (which has a judged reasoning dataset, and the reasoning process is generated from DeepSeek-R1, so we do not need to collect much data ourselves). And after training a model, we can perform a linear transformation to adjust the mean and variance to fit the new LLM(eg:gpt-o1...).
 
@@ -105,12 +69,12 @@ Two ways can provide kind of correctness but not precise.
 However, after reviewing some examples, I think it’s easier for the LLM to judge whether a question is easy. If we can provide some examples of reasoning lengths, its predictions for both difficulty level and length would be more precise relatively. But when the problem is difficult (the dataset includes some Olympic problems, like algebra and graph theory), neither humans (myself) nor the LLM can predict the reasoning length and difficulty level accurately, and some long enumeration may occur in the reasoning process. Most of the time, it may predict a shorter reasoning length than the true one from DeepSeek.
 
 
-<!-- A thing that I think we can do is to use conditional conformal prediction. The class is determined by the LLM (or other methods), and the problem type (math, code, or common sense). Then, we can find a threshold (quantile) to ensure the correctness of new data. However, I think the nonconformity score defined as:
+A thing that I think we can do is to use conditional conformal prediction. The class is determined by the LLM (or other methods), and the problem type (math, code, or common sense). Then, we can find a threshold (quantile) to ensure the correctness of new data. However, I think the nonconformity score defined as:
 $\text{nonconformity score} = \frac{\min (\text{valid length})}{\text{predicted length}}$
 is for the similar purpose? We can try some experiments.
 
 
-Currently, the main cost comes from API calls. I can deploy models with 2B or 1.5B parameters, but I don't have the resources to use larger models. -->
+Currently, the main cost comes from API calls. I can deploy models with 2B or 1.5B parameters, but I don't have the resources to use larger models.
 
 
 

@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional
 import concurrent
 import re
+from json import JSONDecodeError
 import asyncio, itertools, math
 from typing import Tuple
 from typing import Dict, List, Optional
@@ -10,6 +11,7 @@ from openai import OpenAI, APIConnectionError, APIError
 from tools import Prompt
 from tqdm import tqdm
 import time
+from transformers import AutoTokenizer
 from pathlib import Path
 from threading import Lock
 from tools.text import extract_box_content,extract_box_number
@@ -22,6 +24,7 @@ class DataEntry:
         self.full_reasoning = full_reasoning  
         self.result = result  
         self.first_wrong = None
+        self.original_length:Optional[int] = None  
         # self.pred_length = None
         self.min_valid_length: Optional[int] = None  
         self.min_valid_percent: Optional[int] = None  
@@ -50,17 +53,28 @@ class ReasoningOptimizer:
                 api_key=api_config['check_api'],
                 base_url = api_config['check_url']
             )
+        self.tokenizer = AutoTokenizer.from_pretrained(api_config['original_model'])
         self.write_lock = Lock() 
 
 
 
 
-    def load_data(self, jsonl_path: str):
+    def load_data(self, jsonl_path: str, range=None):
+
         with open(jsonl_path, 'r', encoding='utf-8') as f:
             for idx, line in enumerate(f):
-                data = json.loads(line)
-                if(data['status']=='failed'):
+                if range is not None and not (range[0] <= idx < range[1]):
                     continue
+
+                try:
+                    data = json.loads(line)
+                except JSONDecodeError:
+                    print(f"[Warning] Failed to parse line {idx}")
+                    continue
+
+                if data.get('status') == 'failed':
+                    continue
+
                 self.entries.append(
                     DataEntry(
                         entry_id=f"entry_{idx}",
@@ -69,6 +83,8 @@ class ReasoningOptimizer:
                         result=data['result']
                     )
                 )
+
+                    
     
     def query_api(self, problem: str, partial_reasoning: str) -> str:
         max_retries = 3
@@ -96,7 +112,7 @@ Reasoning segment: {partial_reasoning}
                 continue
             except APIError as e:
                 if e.status_code == 429:  # speed constraint
-                    time.sleep(2 ** _) 
+                    time.sleep(5 ** _) 
                     print("APIError")
                     continue
                 break 
@@ -109,10 +125,22 @@ Reasoning segment: {partial_reasoning}
         return await asyncio.to_thread(self.query_api, problem, partial_reasoning)
 
 
-    def split_reasoning(self, full_reasoning: str) -> Dict[int, int]:
+    def split_reasoning_old(self, full_reasoning: str) -> Dict[int, int]:
         total_len = len(full_reasoning)
         return {p: max(1, int(total_len * p / 100)) for p in range(1, 101)}
 
+    def split_reasoning(self, full_reasoning: str) -> Dict[int, int]:
+        token_ids = self.tokenizer.encode(full_reasoning, add_special_tokens=False)
+        total_tokens = len(token_ids)
+        percentiles = {}
+        for p in range(1, 101):
+            token_count = max(1, int(total_tokens * p / 100))
+            partial_text = self.tokenizer.decode(token_ids[:token_count], skip_special_tokens=True)
+            percentiles[p] = len(partial_text)
+            percentiles[f"{p}_token"] = token_count
+
+        return percentiles
+    
     def is_result_valid(self, generated: str, target: str) -> bool:
 
         gen_match = extract_box_content(generated)
@@ -182,20 +210,21 @@ Reasoning segment: {partial_reasoning}
 
         if min_valid_percent > 100:
             min_valid_percent = 101
-            min_valid_length = len(entry.full_reasoning)
+            min_valid_length = chunks[f"100_token"]
         else:
-            min_valid_length = chunks[min_valid_percent]
+            min_valid_length = chunks[f"{min_valid_percent}_token"]
 
         entry.first_wrong=generated
         entry.min_valid_percent = min_valid_percent
         entry.min_valid_length = min_valid_length
+        entry.original_length = chunks[f"100_token"]
         # entry.pred_length = self.query_pred_length(entry.problem)
         self._save_single_entry(entry)
     
         # more efficient code?
 
-    def run_optimization(self):
-        max_workers = min(6, len(self.entries)) 
+    def run_optimization(self,api_sleep=True):
+        max_workers = min(1, len(self.entries)) 
         rate_limit_delay = 0.1
         
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -222,7 +251,7 @@ Reasoning segment: {partial_reasoning}
                 return self.process_single_entry(entry)
             except APIError as e:
                 if e.status_code == 429 and attempt < max_retries - 1:
-                    time.sleep(2 ** attempt) 
+                    time.sleep(5 ** attempt) 
                     continue
                 raise
                 
@@ -238,7 +267,7 @@ Reasoning segment: {partial_reasoning}
             entry_dict = {
                 "entry_id": entry.id,
                 "problem": entry.problem,
-                "original_reasoning_length": len(entry.full_reasoning),
+                "original_reasoning_length": entry.original_length,
                 "min_valid_percent": entry.min_valid_percent,
                 "min_valid_length": entry.min_valid_length,
                 "target_result": entry.result
@@ -253,7 +282,7 @@ Reasoning segment: {partial_reasoning}
             entry_data = {
                 "entry_id": entry.id,
                 "problem": entry.problem,
-                "original_reasoning_length": len(entry.full_reasoning),
+                "original_reasoning_length": entry.original_length,
                 "first_wrong": entry.first_wrong,
                 "min_valid_percent": entry.min_valid_percent,
                 "min_valid_length": entry.min_valid_length,

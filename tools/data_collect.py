@@ -124,8 +124,10 @@ class Data_Processor:
         for i, example in enumerate(dataset):
             if i >= batch_size:
                 break
-            task_queue.put(example["problem"])
-        
+            if example.get("problem",None):
+                task_queue.put(example["problem"])
+            else:
+                task_queue.put(example["Problem"])
         task_queue.join()
         
         for _ in range(self.max_workers):

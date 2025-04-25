@@ -1,0 +1,10 @@
+{
+    "api_key": "sk-jzamerxaovvufrqtwcwoiudvezbxczqlipozheuwqazveznw",     
+    "base_url": "https://api.siliconflow.cn/",
+    "original_model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+    "LLM_check": true,
+    "check_api": "sk-jzamerxaovvufrqtwcwoiudvezbxczqlipozheuwqazveznw",
+    "check_url": "https://api.siliconflow.cn/",
+    "judge_model": "Qwen/Qwen2.5-14B-Instruct"
+    
+}
