@@ -22,12 +22,12 @@ I am using MATH-500 as the calibration set, which contains nearly 300 data point
 - **Algorithm 1** uses deepseek-chat to divide the problems into 5 levels based on their difficulty. For each difficulty level, a different threshold is set.
 
 The results in the calibration set are as follows:
-![Calibration Results](md_pics\diff_level_calibration.png)
+![Calibration Results](md_pics/diff_level_calibration.png)
 - The red line represents the threshold from Algorithm 0.
 - The different gray shades represent various thresholds for different difficulty levels.
 
 Next, let's examine the relationship between the original length and the threshold:
-![](md_pics\diff_level_calibration_original.png)
+![](md_pics/diff_level_calibration_original.png)
 
 We compute the reduction ratio as:
 $$
@@ -46,7 +46,7 @@ $$
 #### Test
 
 We tested on the same dataset (MATH-500), and the accuracy was maintained:
-![](md_pics\diff_level_test.png)
+![](md_pics/diff_level_test.png)
 
 However, when testing on a different, more difficult dataset (AIME 2024), the results are as follows:
 - Using Algorithm-0, we found that only 12 out of 30 (40\%) of the cut data can output the same result as the full reasoning result.
@@ -56,7 +56,7 @@ However, when testing on a different, more difficult dataset (AIME 2024), the re
 ### Algorithm 2
 
 Here, we use the $\frac{min\_valid\_length}{pred\_length}$ as the nonconformity score, where $pred\_length$ is the prediction from deepseek. We found that the threshold is 2.13, and the relationship between the prediction and real values is shown below:
-![](md_pics\pred_length.png)
+![](md_pics/pred_length.png)
 
 - The log-axis seems to provide a slightly better fit, but the difference between the predicted and actual values remains noticeable.
 - Using this nonconformity score in the calibration data, we get the following reduction ratio:
