@@ -17,9 +17,9 @@ Here, the `min_valid_length` is the minimum value of $k$ such that for all $k' \
 
 I am using MATH-500 as the calibration set, which contains nearly 300 data points.
 
-### Algorithm 0 & 1
-- **Algorithm 0** uses a unique threshold for all problems.
-- **Algorithm 1** uses deepseek-chat to divide the problems into 5 levels based on their difficulty. For each difficulty level, a different threshold is set.
+### Algorithm 1 & 1-cond
+- **Algorithm 1** uses a unique threshold for all problems.
+- **Algorithm 1-cond** uses deepseek-chat to divide the problems into 5 levels based on their difficulty. For each difficulty level, a different threshold is set.
 
 The results in the calibration set are as follows:
 ![Calibration Results](md_pics/diff_level_calibration.png)
@@ -49,8 +49,8 @@ We tested on the same dataset (MATH-500), and the accuracy was maintained:
 ![](md_pics/diff_level_test.png)
 
 However, when testing on a different, more difficult dataset (AIME 2024), the results are as follows:
-- Using Algorithm-0, we found that only 12 out of 30 (40\%) of the cut data can output the same result as the full reasoning result.
-- Using Algorithm-1, for Level 4, the ratio is 9 out of 14 (64\%). For Level 5, the ratio is 7 out of 15 (46\%).
+- Using Algorithm-1, we found that only 12 out of 30 (40\%) of the cut data can output the same result as the full reasoning result.
+- Using Algorithm-1-cond, for Level 4, the ratio is 9 out of 14 (64\%). For Level 5, the ratio is 7 out of 15 (46\%).
 - **Note**: This dataset is not perfect. In the 30 data points, 10 data entries had an invalid final result (""). In these cases, the judge LLM generally considers that the output cannot match the full reasoning.
 
 ### Algorithm 2
@@ -63,7 +63,7 @@ Here, we use the $\frac{min\_valid\_length}{pred\_length}$ as the nonconformity 
 $$
 \text{Reduction Ratio} = \frac{\sum \max(\text{original\_length} - \text{threshold}\cdot \text{pred\_length}, 0)}{\sum \text{original\_length}} = 0.27
 $$
-    the reduction ratio is smaller than the algorithm-1
+    the reduction ratio is smaller than the algorithm-1-cond
 ### Future Work
 
 Dividing data into different difficulty levels is a simple and useful method. Using prediction length serves a similar purpose, but the performance of the predictions is not very good.
