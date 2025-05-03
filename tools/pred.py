@@ -23,6 +23,7 @@ def query_with_retry(client, prompt,model_name = "deepseek-chat", retries=3, del
                     {"role": "system", "content": "You are a helpful assistant"},
                     {"role": "user", "content": prompt}
                 ],
+                temperature=0.0,
                 stream=False
             )
             return response.choices[0].message.content.strip()
@@ -31,7 +32,7 @@ def query_with_retry(client, prompt,model_name = "deepseek-chat", retries=3, del
             time.sleep(delay)
     return None
 
-def annotate_difficulty_level(input_path: str, api_key: str, base_url: str,model_name:str, retries: int = 3, delay: int = 5):
+def predict_difficulty_level(input_path: str, api_key: str, base_url: str,model_name:str, retries: int = 3, delay: int = 5):
     input_path = Path(input_path)
     assert input_path.exists(), f"File not found: {input_path}"
 

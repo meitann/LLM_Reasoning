@@ -7,7 +7,8 @@ from openai import OpenAI, APIConnectionError, APIError
 from tools.text import extract_box_content
 import math
 from tqdm import tqdm  # Import tqdm for progress bar
-
+import os
+import shutil
 def evaluate_threshold(
     config: Dict[str, Any],
     data_file: str,
@@ -32,7 +33,10 @@ def evaluate_threshold(
             # assume JSONL
             data = [json.loads(line) for line in f if line.strip()]
             is_jsonl = True
-
+    backup_path = data_file.rsplit('.', 1)[0] + "_backup.jsonl"
+    if os.path.exists(data_file):
+        shutil.copyfile(data_file, backup_path)
+        print(f"Backup saved to {backup_path}")
     # --- 2. Set up tokenizer and clients ---
     model_for_tokenizer = config.get('original_model', config['judge_model'])
     tokenizer = AutoTokenizer.from_pretrained(model_for_tokenizer)
@@ -102,51 +106,44 @@ def evaluate_threshold(
     # --- 3. Process each entry with progress bar ---
     key_name = threshold_fn.__name__
     
-    # Use tqdm to create a progress bar
-    with tqdm(data, desc="Processing entries", unit="entry") as progress_bar:
-        for entry in progress_bar:
-            prob = entry.get('problem')
-            full = entry.get('full_reasoning', "")
-            # compute m and k
-            m = threshold_fn(entry=entry) 
-            if m:
-                token_ids = tokenizer.encode(full, add_special_tokens=False)
-                k = math.ceil(min(len(token_ids), m))
+    with open(data_file, 'w', encoding='utf-8') as f_out:
+        key_name = threshold_fn.__name__
 
-                # get partial text
-                partial = tokenizer.decode(token_ids[:k], skip_special_tokens=True)
+        with tqdm(data, desc="Processing entries", unit="entry") as progress_bar:
+            for entry in progress_bar:
+                prob = entry.get('problem')
+                full = entry.get('full_reasoning', "")
+                m = threshold_fn(entry=entry)
 
-                # call model
-                full_ans    = get_answer(prob, full)
-                partial_ans = get_answer(prob, partial)
+                if m:
+                    token_ids = tokenizer.encode(full, add_special_tokens=False)
+                    k = math.ceil(min(len(token_ids), m))
+                    partial = tokenizer.decode(token_ids[:k], skip_special_tokens=True)
 
-                # extract boxed content
-                f_lst = extract_box_content(full_ans)
-                p_lst = extract_box_content(partial_ans)
-                is_same = False
-                if f_lst and p_lst and "None" not in (p_lst[-1] or f_lst[-1]):
-                    norm_f = normalize_answer(f_lst[-1])
-                    norm_p = normalize_answer(p_lst[-1])
-                    if norm_f == norm_p or norm_f in norm_p or norm_p in norm_f:
-                        is_same = True
-                    elif check_client:
-                        is_same = llm_validate(norm_p, norm_f)
+                    full_ans = get_answer(prob, full)
+                    partial_ans = get_answer(prob, partial)
 
-                entry[key_name] = {
-                    "k": k,
-                    "is_same": is_same
-                }
-                entry["original_length"] = len(token_ids)
-            else:
-                entry[key_name] = "invalid threshold"
+                    f_lst = extract_box_content(full_ans)
+                    p_lst = extract_box_content(partial_ans)
+                    is_same = False
+                    if f_lst and p_lst and "None" not in (p_lst[-1] or f_lst[-1]):
+                        norm_f = normalize_answer(f_lst[-1])
+                        norm_p = normalize_answer(p_lst[-1])
+                        if norm_f == norm_p or norm_f in norm_p or norm_p in norm_f:
+                            is_same = True
+                        elif check_client:
+                            is_same = llm_validate(norm_p, norm_f)
 
+                    entry[key_name] = {
+                        "k": k,
+                        "is_same": is_same
+                    }
+                    entry["original_length"] = len(token_ids)
+                else:
+                    entry[key_name] = "invalid threshold"
 
-            # --- 4. Write each entry immediately ---
-            out_path = data_file.rsplit('.', 1)[0] + "_evaluated.jsonl"
-            with open(out_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-
-    print(f"Done. Results written to {out_path}")
+                f_out.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    print(f"Done. Results written to {data_file}")
 
 
 def NC_0(tao=None,entry=None):

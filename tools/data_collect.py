@@ -70,6 +70,7 @@ class Data_Processor:
                     messages=self._build_messages(problem),
                     temperature=0.0,
                     max_tokens=8000,
+                    timeout=300
                     # top_p=1.0
                 )
                 
